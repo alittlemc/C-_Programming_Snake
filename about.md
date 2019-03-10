@@ -1,6 +1,8 @@
 ## 说明
 * > 基于`佚名`开源项目`超级贪吃蛇`该进与优化,并且写了说明与解析
 * > 程序推荐 编译环境 :Visual Studio 2017 (VS)
+* > 此代码为C++代码,但是用的还是面向过程的思想,所以C语言也可以实现
+> > 吐槽:大学所谓的学习的C语言其实混入了C++代码,只不过C++兼容C,给人们带来错觉,不信你可以把`.cpp`文件后缀改成`.c`,二维char指针操作都会保存,而且`//`单行注释只用于C++
 
 ## 游戏的实质:`解析dos框内的位置可以用自定义实现一些功能`
 * > 设置光标位置的坐标,可以实现自定义打印:
@@ -27,173 +29,218 @@ inline void color(int a)
 3. 使用 w a s d 来移动
 4. 吃到苹果加分数,分数的添加是随机的,分数越高,速度越快
 5. 蛇的尾巴延迟 和 加长
-6. 撞墙游戏结束
+6. 撞墙游戏结束,显示分数,并且复活(借用goto)
 
 ## 代码
+> 头文件以及宏定义
+``` C++
+#include<iostream>//标准io
+#include<windows.h>
+#include<ctime>//用于获取时间戳
+#include<cstdlib>
+#include<conio.h>//键盘事件
+
+using namespace std;//标准std命名空间
+#define N 30//游戏布局范围(正方形)
+constexpr auto DIE = 3;//复活等待时间;
+```
+> 辅助函数cout_ch
+``` C++
+inline bool cout_ch(int x, int y, int id, const char* ch = "")//方便输出信息
+{
+	color(id);
+	gotoxy(x,y);
+	cout << ch << endl;
+	return 0;
+}
+```
 > 地图初始化
 ``` C++
 void init(int apple[2])//初始化函数（初始化围墙、显示信息、苹果）
 {
-	int i,j;//初始化围墙
-	int wall[N+2][N+2]={{0}};//0为空气1为墙
-	for(i=1;i<=N;i++) 
-		for(j=1;j<=N;j++)
-			wall[i][j]=1;//设置全部坐标
+	int i, j;//初始化围墙
+	int wall[N + 2][N + 2] = { {0} };//0为空气1为墙
+	for (i = 1; i <= N; i++)
+		for (j = 1; j <= N; j++)
+			wall[i][j] = 1;//设置全部坐标
 
-	color(11);//
-	
-	for(i=0;i<N+2;i++)
+	color(11);
+	//设置地图
+	for (i = 0; i < N + 2; i++)
 	{
-		for(j=0;j<N+2;j++)
-			if(wall[i][j])
-				cout<<"■";
+		for (j = 0; j < N + 2; j++)
+			if (wall[i][j])
+				cout << "■";
 			else
-				cout<<"□" ;
-        
-		cout<<endl;
+				cout << "□";
+		cout << endl;
 	}
-  
-	//右边提示内容
-	gotoxy(N+3,1);//显示"提示",在游戏区域N+2外
-	color(20);
-	cout<<"按 W S A D 移动方向"<<endl;
+	
+	//提示 在游戏区域(N+2)外(N+3)
+	cout_ch(N + 3, 1, 10, "按 W S A D 移动方向,按任意键暂停");
+	cout_ch(N + 3, 2, 10, "分数是随机加的,分数越高速度越快,得分也越高");
+	cout_ch(N + 3, 3,14, "得分:");
 
-	gotoxy(N+3,2);//显示在下一行
-	color(20);
-	cout<<"按任意键暂停"<<endl;
+	apple[0] = rand() % N + 1;//随机生成苹果位置
+	apple[1] = rand() % N + 1;
 
-	gotoxy(N+3,3);
-	color(20);
-	cout<<"得分："<<endl;
-
-	apple[0]=rand()%N+1;//随机生成苹果位置
-	apple[1]=rand()%N+1;
-	gotoxy(apple[0],apple[1]);
-
-	color(12);
-	cout<<"●"<<endl;
+	cout_ch(apple[0], apple[1], 12, "●");
+	cout_ch(N + 3, 4, 12, "苹果:");
+	cout_ch(N + 3, 5, 15, "速度:");
+	cout_ch(N + 3, 6,13, "死亡:");
+	cout_ch(N + 5, 3, 14, "0");
+	cout_ch(N + 5, 4, 12, "0");
+	cout_ch(N + 5, 5, 15, "10");
+	cout_ch(N + 5, 6,13, "0");
 }
 ```
 > 准备参数
 ``` C++
-  int i,j;//i用于循环 ,j用于存放技能的判定(暂时未实现)
-	int** snake=NULL;//存放位置单元snake[x][y]
+  	int i, die = 0,j = 0;//i用于循环 j用于复活 die用于记录复活
+	int** snake = NULL;//存放位置单元snake[x][y]
 	int apple[2];//设置苹果位置,apple[1]=x;apple[2]=y;
-	int score=0;//记录时间
+	int score = 0;
 	int tail[2];//尾巴位置,延缓更新
-	int len=3;//初始长度值
-	char ch='p';//存放_getch()
-	srand((unsigned)time(NULL));//随机数发生器的初始化函数,获取时间戳并且设置为种子,实现伪随机
-	init(apple);//调用初始化函数,传递苹果指针位置,用于初始化
+	int len = 3;//初始长度值
+	char ch = 'p';
+	srand((unsigned)time(NULL));//随机数发生器的初始化函数,获取时间戳并且设置为种子
+	init(apple);//初始化
+	snake = (int**)realloc(snake, sizeof(int*)*len);//通过realloc扩大p的空间，并把新的地址赋值给p
 ```
 > 开辟堆空间以及尾巴
 ``` C++
-	snake=(int**)realloc(snake,sizeof(int*)*len);//通过realloc扩大p的空间，并把新的地址赋值
-	for(i=0;i<len;i++)
-		snake[i]=(int*)malloc(sizeof(int)*2);
-    //动态开辟堆空间,用于存放尾巴的位置,因为尾巴可以延长所以需要动态开辟
-		for(i=0;i<len;i++)//尾巴
-		{
-			snake[i][0]=N/2;
-			snake[i][1]=N/2+i;
-			gotoxy(snake[i][0],snake[i][1]);
-			color(14);
-			cout<<"★"<<endl;
-		}
+	snake = (int**)realloc(snake, sizeof(int*)*len);//通过realloc扩大p的空间，并把新的地址赋值给p
+
+	for (i = 0; i < len; i++)
+		snake[i] = (int*)malloc(sizeof(int) * 2);//开辟堆空间
+	
+	gotoxy(0, N + 3);
+	for (i = 0; i < len; i++)
+	{
+		snake[i][0] = N / 2;
+		snake[i][1] = N / 2 + i;
+		cout_ch(snake[i][0], snake[i][1], 14, "★");
+	}
  ```
  ## 游戏的主体
  ```C++
- while(1)//循环
-		{	
-			//在外围设置墙
-			tail[0]=snake[len-1][0];
-			tail[1]=snake[len-1][1];
-			gotoxy(tail[0],tail[1]);
-			color(11);
-			cout<<"■"<<endl;
-
-			for(i=len-1;i>0;i--)
-			{
-				snake[i][0]=snake[i-1][0];
-				snake[i][1]=snake[i-1][1];
-				gotoxy(snake[i][0],snake[i][1]);
-				color(14);
-				cout<<"★"<<endl;
-			}
-
-			if(kbhit())//kbhit()检查当前是否有键盘输入,若有则返回一个非0值,否则返回0,用于检测按键更新 conio
-			{
-				gotoxy(0,N+2);//在下方显示
-				ch=getche();//获取当前键入,设置为ch用于控制移动
-				cout<<ch<<endl;
-			}
-
-			switch(ch)//设置移动,按下按键后不修改,可以持续移动
-			{
-				case 'w':snake[0][1]--;break;
-				case 's':snake[0][1]++;break;
-				case 'a':snake[0][0]--;break;
-				case 'd':snake[0][0]++;break;
-				default: break;
-			}
-
-			gotoxy(snake[0][0],snake[0][1]);
-			color(14);
-			cout<<"★"<<endl;
-			Sleep((j ? 100 : (score < 400 ? abs((int)(400 - 0.3*score)) : 1)));//设置刷新时间 分数//设置刷新时间 分数
-
-			if(snake[0][0]==apple[0]&&snake[0][1]==apple[1])//吃掉苹果后蛇分数加1，蛇长加1 位置重合
-			{
-				score = score + rand() % N;//分数加
-				len++;//蛇加长
-				snake=(int**)realloc(snake,sizeof(int*)*len);//重新设置空间
-				snake[len-1]=(int*)malloc(sizeof(int)*2);
-
-				apple[0]=rand()%N+1;//生成新的苹果
-				apple[1]=rand()%N+1;
-				gotoxy(apple[0],apple[1]);
-				color(12);
-				cout<<"●"<<endl;
-				gotoxy(N+5,3);
-				color(20);
-				cout<<score<<endl;
-			}
-			gotoxy(N+3,5);//显示在下一行
-			color(20);
-			cout <<"当前位置 X="<<tail[0]<<"Y="<<tail[1]<<endl;
-
-			if (snake[0][1] == 0 || snake[0][1] == N || snake[0][0] == 0 || snake[0][0] == N) //撞到围墙后失败
-			{
-				gotoxy(N / 2, N / 2);//在游戏界面中间显示游戏结束,和分数
-				color(30);
-				cout << "游戏结束,分数:"<<score<< endl;
-
-				for (i = 0; i < len; i++)
-					free(snake[i]); //释放全部的内存
-
-				Sleep(INFINITE);//0xffffffff最大值,游戏结束无需更新
-				exit(0);
-			}
+ redo://复活goto到此
+while(1)//循环
+	{
+		tail[0] = snake[len - 1][0];
+		tail[1] = snake[len - 1][1];
+		cout_ch(tail[0], tail[1], 11, "■");
+		for (i = len - 1; i > 0; i--)
+		{
+			snake[i][0] = snake[i - 1][0];
+			snake[i][1] = snake[i - 1][1];
+			cout_ch(snake[i][0], snake[i][1], 14, "★");
 		}
+
+		if (_kbhit())//kbhit()检查当前是否有键盘输入,若有则返回一个非0值,否则返回0,用于检测按键更新 conio
+		{
+			gotoxy(0, N + 2);//在下方显示
+			ch = _getche();//获取当前键入
+			//cout << ch << endl;
+		}
+
+		switch (ch)
+		{
+			case 'w':snake[0][1]--; break;
+			case 's':snake[0][1]++; break;
+			case 'a':snake[0][0]--; break;
+			case 'd':snake[0][0]++; break;
+			case 'r':j = 1; goto end; break;//按r会自杀无法复活,这个还是不要说出去吧
+			default: break;
+		}
+
+		cout_ch(snake[0][0], snake[0][1], 10, "★");//绿帽子代表力量
+		Sleep((j ? 100 : (score < 400 ? abs((int)(400 - 0.8*score)) : 1)));//设置刷新时间 分数
+		if (snake[0][0] == apple[0] && snake[0][1] == apple[1])//吃掉苹果后蛇分数加1，蛇长加1 位置重合
+		{
+			score = score + (int)((rand()% N)*(len-2)*0.5);//分数加
+			len++;//蛇加长
+			snake = (int**)realloc(snake, sizeof(int*)*len);//重新设置空间
+			snake[len - 1] = (int*)malloc(sizeof(int) * 2);
+
+			apple[0] = rand() % N + 1;//生成新的苹果
+			apple[1] = rand() % N + 1;
+			cout_ch(apple[0], apple[1], 1 + rand() % 14, "●");//苹果颜色随机
+
+			gotoxy(N + 5, 3);
+			color(14);
+			cout << score << endl;
+
+			gotoxy(N + 5, 4);
+			color(12);
+			cout <<len - 3<< endl;
+
+			gotoxy(N + 5, 5);
+			color(15);
+			cout << 410 - (score < 400 ? abs((int)(400 - 0.8*score)) : 1) << endl;
+		}
+
+		gotoxy(N + 3, 7);//显示在下一行
+		color(10);
+		cout << "当前位置 X=" << snake[0][0] << " Y=" << snake[0][1] << endl;
+
+		if(snake[0][1] < 0 || snake[0][1] > N || snake[0][0] < 0 || snake[0][0] > N)//出地图就拉回来
+		{
+			snake[0][1] = rand() % N;
+			snake[0][0] = rand() % N;
+		}
+		
+		if (snake[0][1] == 0 || snake[0][1] == N || snake[0][0] == 0 || snake[0][0] == N)//撞到围墙后失败
+		{
+end:
+			gotoxy(N / 2-5, N / 2);//在游戏界面中间显示游戏结束,和分数
+			color(30);
+			cout << "游戏结束,分数:" << score <<" 苹果:"<<len-3<<endl;
+			
+			gotoxy(N + 5, 6);
+			color(13);
+			cout << ++die << endl;
+			if (j != 1)
+			{
+				for (i = 0; i < DIE; i++)//复活倒计时
+				{
+					gotoxy(N + 3, 8);
+					cout <<DIE-i<< "秒后复活" << endl;
+					Sleep(1000);
+				}
+				score = (int)(score*0.5);//复活扣分
+				snake[0][1] = rand() % N;
+				snake[0][0] = rand() % N;
+				goto redo;
+			}
+			for (i = 0; i < len; i++)
+				free(snake[i]); //释放全部的内存
+			Sleep(INFINITE);//0xffffffff最大值,游戏结束无需更新
+			exit(0);
+		}
+	}
  ```
 
 ## 游戏的难题与解决代码
 1. 可以实现按键控制移动 
 ``` C++
-  if(kbhit())//kbhit()检查当前是否有键盘输入,若有则返回一个非0值,否则返回0,用于检测按键更新 conio
-	{
-		gotoxy(0,N+2);//在下方显示
-		ch=getche();//获取当前键入,设置为ch用于控制移动
-		cout<<ch<<endl;
-	}
-	switch(ch)//设置移动,按下按键后不修改,可以持续移动
-	{
-		case 'w':snake[0][1]--;break;
-		case 's':snake[0][1]++;break;
-		case 'a':snake[0][0]--;break;
-		case 'd':snake[0][0]++;break;
-		default: break;
-	}
+ if (_kbhit())//kbhit()检查当前是否有键盘输入,若有则返回一个非0值,否则返回0,用于检测按键更新 conio
+		{
+			gotoxy(0, N + 2);//在下方显示
+			ch = _getche();//获取当前键入
+			//cout << ch << endl;
+		}
+
+		switch (ch)
+		{
+			case 'w':snake[0][1]--; break;
+			case 's':snake[0][1]++; break;
+			case 'a':snake[0][0]--; break;
+			case 'd':snake[0][0]++; break;
+			case 'r':j = 1; goto end; break;
+			default: break;
+		}
+
 ```
 2. 撞墙游戏结束
 ``` C++
@@ -205,4 +252,8 @@ snake[0][1] == 0 || snake[0][1] == N || snake[0][0] == 0 || snake[0][0] == N
 srand((unsigned)time(NULL));//初始化
 
 r = rand() % N//调用
+```
+4. 复活和退出
+```C++
+用GOTO
 ```
